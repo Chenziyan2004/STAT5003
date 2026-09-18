@@ -7,6 +7,23 @@ format:
     code-summary: "Show code"
     self-contained: true
     number-sections: true
+    include-in-header:
+      text: |
+        <style>
+        @media print {
+          @page { size: A4; margin: 12mm; }
+          body { font-size: 10pt; line-height: 1.25; }
+          h1 { font-size: 18pt; margin-top: 0.7rem; margin-bottom: 0.4rem; }
+          h2 { font-size: 14pt; margin-top: 0.6rem; margin-bottom: 0.3rem; }
+          p { margin-bottom: 0.4rem; }
+          table { font-size: 9pt; }
+          figure {
+            break-inside: avoid;
+            margin-top: 0.35rem;
+            margin-bottom: 0.45rem;
+          }
+        }
+        </style>
 execute:
   warning: false
   message: false
@@ -148,8 +165,8 @@ efficient implementations where available.
 ```{r}
 #| label: fig-missing-class
 #| fig-width: 12
-#| fig-height: 5.5
-#| fig-cap: "Figure 1: Structural missingness and health-class imbalance."
+#| fig-height: 4.2
+#| fig-cap: "Structural missingness and health-class imbalance."
 
 missing_vars <- c(
   "health", "spc_common", "steward", "guards",
@@ -216,8 +233,8 @@ why accuracy alone is unsuitable.
 ```{r}
 #| label: fig-univariate
 #| fig-width: 12
-#| fig-height: 5.5
-#| fig-cap: "Figure 2: Distributions of diameter and common species. Extreme diameters are retained in the audit but omitted from the displayed scale."
+#| fig-height: 4.2
+#| fig-cap: "Distributions of diameter and common species. Extreme diameters are retained in the audit but omitted from the displayed scale."
 
 top_species <- trees |>
   count(spc_common, sort = TRUE, name = "n") |>
@@ -255,8 +272,8 @@ alone represents 87,014 living trees (13.3%).
 ```{r}
 #| label: fig-feature-outcome
 #| fig-width: 12
-#| fig-height: 5.5
-#| fig-cap: "Figure 3: Health composition by recorded problem burden and observed Poor-health share by species."
+#| fig-height: 4.2
+#| fig-cap: "Health composition by recorded problem burden and observed Poor-health share by species."
 
 health_by_problem <- trees |>
   count(problem_group, health, .drop = FALSE, name = "n") |>
@@ -271,7 +288,7 @@ p_problem <- ggplot(
   geom_col(width = 0.7) +
   scale_fill_manual(values = health_cols) +
   scale_y_continuous(labels = label_percent()) +
-  labs(title = "Health worsens as recorded problems accumulate",
+  labs(title = "Poor-health share increases with recorded problem count",
        x = "Number of root/trunk/branch problems", y = "Within-group share",
        fill = "Health")
 
@@ -308,8 +325,8 @@ observer, and other variables prevents a causal interpretation.
 ```{r}
 #| label: fig-feature-feature
 #| fig-width: 9
-#| fig-height: 4.8
-#| fig-cap: "Figure 4: Diameter distributions across the twelve most common species (feature--feature relationship)."
+#| fig-height: 3.5
+#| fig-cap: "Diameter distributions across the twelve most common species (feature--feature relationship)."
 
 trees |>
   filter(spc_common %in% top_species$spc_common) |>
