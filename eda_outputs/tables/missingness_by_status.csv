@@ -1,0 +1,31 @@
+status,variable,missing_pct
+Alive,health,1.5333354800030054e-6
+Alive,spc_common,7.666677400015027e-6
+Alive,steward,0
+Alive,guards,1.5333354800030054e-6
+Alive,sidewalk,1.5333354800030054e-6
+Alive,problems,7.513343852014726e-5
+Alive,bin,0.013957952874467357
+Alive,bbl,0.013957952874467357
+Alive,council district,0.009515879988898652
+Alive,census tract,0.009515879988898652
+Dead,health,1
+Dead,spc_common,0.9999283718931309
+Dead,steward,1
+Dead,guards,1
+Dead,sidewalk,1
+Dead,problems,1
+Dead,bin,0.016474464579901153
+Dead,bbl,0.016474464579901153
+Dead,council district,0.011675381419669078
+Dead,census tract,0.011675381419669078
+Stump,health,1
+Stump,spc_common,1
+Stump,steward,1
+Stump,guards,1
+Stump,sidewalk,1
+Stump,problems,1
+Stump,bin,0.012801631358332389
+Stump,bbl,0.012801631358332389
+Stump,council district,0.008496657981194063
+Stump,census tract,0.008496657981194063

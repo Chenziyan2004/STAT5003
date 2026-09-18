@@ -1,0 +1,12 @@
+field_or_group,role,planned_treatment
+health,Outcome,"Three-class factor: Good, Fair, Poor"
+block_id,Resampling only,Keep blocks together across train/test splits; do not predict with the ID
+tree_dbh,Predictor,Audit implausible values; compare raw and log1p forms inside resampling
+spc_common,Predictor,Use common name only and pool rare species within each training fold
+curb_loc/steward/guards/sidewalk,Predictors,Treat as categorical and explicitly handle unknown values
+root/trunk/branch indicators,Predictors,Use the nine Yes/No fields; do not also use raw problems text
+user_type,Sensitivity predictor,Assess observer bias by comparing models with and without this field
+collection_month,Sensitivity predictor,Check seasonal/collection-process effects
+borough/latitude/longitude,Predictors,Use a parsimonious geography set and test sensitivity to its removal
+IDs/address/redundant geographies,Excluded,High-cardinality identifiers or duplicated location information
+status/stump_diam,Excluded,Constant or not applicable after selecting living trees

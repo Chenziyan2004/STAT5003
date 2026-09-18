@@ -1,0 +1,411 @@
+---
+title: "Classifying the Perceived Health of New York City Street Trees"
+author: "STAT5003 Group [REPLACE WITH GROUP NUMBER]"
+format:
+  html:
+    code-fold: true
+    code-summary: "Show code"
+    self-contained: true
+    number-sections: true
+execute:
+  warning: false
+  message: false
+---
+
+<!-- Replace all square-bracketed placeholders before submission. -->
+
+# Framing & Dataset Selection
+
+## Research question and motivation
+
+**Research question:** *To what extent can observable tree characteristics,
+site conditions, and geographic information classify the perceived health of
+living New York City street trees as Good, Fair, or Poor?*
+
+This is a multi-class classification problem with practical relevance to the
+New York City Department of Parks and Recreation (NYC Parks), local councils,
+community tree stewards, and residents. A reliable model could support the
+prioritisation of professional inspections and maintenance when it is not
+feasible to inspect every tree simultaneously. It should be treated as a
+screening tool rather than an arboricultural diagnosis because the outcome is
+the census worker's *perception* of health, not a laboratory measurement (New
+York City Department of Parks and Recreation [NYC Parks], 2016). The analysis
+is predictive and observational; associations must not be interpreted as
+causal effects.
+
+```{r}
+#| label: setup
+#| results: hide
+
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(forcats)
+library(scales)
+library(patchwork)
+library(knitr)
+
+data_file <- "2015_Street_Tree_Census_-_Tree_Data_20260912.csv"
+
+trees_raw <- read_csv(
+  data_file,
+  na = c("", "NA", "N/A", "NULL"),
+  show_col_types = FALSE,
+  progress = FALSE
+)
+
+issue_vars <- c(
+  "root_stone", "root_grate", "root_other",
+  "trunk_wire", "trnk_light", "trnk_other",
+  "brch_light", "brch_shoe", "brch_other"
+)
+
+trees <- trees_raw |>
+  filter(status == "Alive", health %in% c("Good", "Fair", "Poor")) |>
+  mutate(
+    health = factor(health, levels = c("Good", "Fair", "Poor")),
+    problem_count = rowSums(
+      across(all_of(issue_vars), ~ .x == "Yes"),
+      na.rm = TRUE
+    ),
+    problem_group = factor(
+      if_else(problem_count >= 3, "3+", as.character(problem_count)),
+      levels = c("0", "1", "2", "3+")
+    )
+  )
+
+health_cols <- c(Good = "#2E7D32", Fair = "#F9A825", Poor = "#C62828")
+
+theme_set(
+  theme_minimal(base_size = 10) +
+    theme(
+      plot.title = element_text(face = "bold", size = 11),
+      plot.subtitle = element_text(size = 9),
+      panel.grid.minor = element_blank(),
+      legend.position = "bottom"
+    )
+)
+```
+
+# Consider & Gather Data
+
+## Source and scope
+
+The data are the **2015 Street Tree Census--Tree Data**, collected by
+volunteers and staff coordinated by NYC Parks and partner organisations. The
+census records species, diameter, site conditions, perceived health, and
+location for individual street-tree points. Data collection ran from May 2015
+to October 2016, so the data represent a historical snapshot rather than the
+current condition of New York City's trees (NYC Parks, 2024). The dataset and
+data dictionary were obtained from the official
+[NYC Open Data portal](https://data.cityofnewyork.us/Environment/2015-Street-Tree-Census-Tree-Data/uvpi-gqnh),
+not Kaggle, an R built-in dataset, or course material.
+
+Health is undefined for dead trees and stumps. We therefore restrict the
+classification cohort to living trees with a recorded Good, Fair, or Poor
+health label. This leaves 652,172 observations; only one living record is
+excluded because its health value is missing.
+
+## Suitability against the project requirements
+
+```{r}
+#| label: dataset-requirements
+
+requirement_table <- tibble(
+  Requirement = c("Large", "Messy", "Multi-class"),
+  `Evidence in this dataset` = c(
+    paste0(comma(nrow(trees_raw)), " rows and ", ncol(trees_raw),
+           " columns; the CSV is approximately 285 MB."),
+    paste0(
+      comma(sum(is.na(trees_raw$health))),
+      " missing health values, structurally concentrated among dead trees ",
+      "and stumps; diameter also contains values requiring review."
+    ),
+    paste0(
+      "Good/Fair/Poor outcome with class shares of ",
+      percent(mean(trees$health == "Good"), accuracy = 0.1), ", ",
+      percent(mean(trees$health == "Fair"), accuracy = 0.1), " and ",
+      percent(mean(trees$health == "Poor"), accuracy = 0.1), "."
+    )
+  )
+)
+
+kable(requirement_table, caption = "Evidence that the dataset meets three project requirements")
+```
+
+The dataset is not claimed to be **Complex** under the assignment definition
+because it has 45 rather than more than 100 features, and it is not claimed to
+be **Integrated** because no external data source has been joined. For
+computational efficiency, the 285 MB file is loaded once, summaries are
+vectorised, and later tree-based model tuning will use parallel processing and
+efficient implementations where available.
+
+# Exploratory Data Analysis
+
+## Missingness and outcome distribution
+
+```{r}
+#| label: fig-missing-class
+#| fig-width: 12
+#| fig-height: 5.5
+#| fig-cap: "Figure 1: Structural missingness and health-class imbalance."
+
+missing_vars <- c(
+  "health", "spc_common", "steward", "guards",
+  "sidewalk", "problems", "bin", "bbl"
+)
+
+missing_by_status <- trees_raw |>
+  group_by(status) |>
+  summarise(across(all_of(missing_vars), ~ mean(is.na(.x))), .groups = "drop") |>
+  pivot_longer(-status, names_to = "variable", values_to = "missing_rate") |>
+  mutate(status = factor(status, levels = c("Alive", "Dead", "Stump")))
+
+p_missing <- ggplot(
+  missing_by_status,
+  aes(x = status, y = fct_rev(variable), fill = missing_rate)
+) +
+  geom_tile(colour = "white", linewidth = 0.4) +
+  geom_text(
+    aes(
+      label = percent(missing_rate, accuracy = 0.1),
+      colour = missing_rate > 0.5
+    ),
+    size = 2.7,
+    show.legend = FALSE
+  ) +
+  scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "black")) +
+  scale_fill_gradient(
+    low = "#F7FBFF", high = "#08519C", labels = label_percent()
+  ) +
+  labs(title = "Missingness depends on tree status", x = NULL, y = NULL,
+       fill = "Missing")
+
+class_dist <- trees |>
+  count(health, name = "n") |>
+  mutate(proportion = n / sum(n))
+
+p_class <- ggplot(class_dist, aes(health, n, fill = health)) +
+  geom_col(width = 0.7, show.legend = FALSE) +
+  geom_text(
+    aes(label = paste0(comma(n), "\n", percent(proportion, accuracy = 0.1))),
+    vjust = -0.15,
+    size = 3
+  ) +
+  scale_fill_manual(values = health_cols) +
+  scale_y_continuous(
+    labels = label_comma(), expand = expansion(mult = c(0, 0.14))
+  ) +
+  labs(title = "Living-tree health is imbalanced", x = "Health", y = "Trees")
+
+(p_missing | p_class) +
+  plot_layout(widths = c(1.2, 1)) +
+  plot_annotation(tag_levels = "A")
+```
+
+The condition-related fields are almost entirely absent for Dead and Stump
+records because they were not applicable, rather than because of random data
+loss. After defining the living-tree cohort, the outcome remains strongly
+imbalanced: Good accounts for 81.1%, Fair 14.8%, and Poor only 4.1%. A trivial
+always-Good classifier would therefore achieve 81.1% accuracy, demonstrating
+why accuracy alone is unsuitable.
+
+## Univariate distributions and outliers
+
+```{r}
+#| label: fig-univariate
+#| fig-width: 12
+#| fig-height: 5.5
+#| fig-cap: "Figure 2: Distributions of diameter and common species. Extreme diameters are retained in the audit but omitted from the displayed scale."
+
+top_species <- trees |>
+  count(spc_common, sort = TRUE, name = "n") |>
+  slice_head(n = 12)
+
+p_dbh <- ggplot(trees, aes(health, tree_dbh, fill = health)) +
+  geom_boxplot(outlier.shape = NA, width = 0.65) +
+  coord_cartesian(ylim = c(0, quantile(trees$tree_dbh, 0.999, na.rm = TRUE))) +
+  scale_fill_manual(values = health_cols, guide = "none") +
+  labs(title = "Diameter varies across health classes",
+       subtitle = "Display ends at the 99.9th percentile",
+       x = "Health", y = "Diameter at breast height (inches)")
+
+p_species_count <- top_species |>
+  mutate(spc_common = fct_reorder(spc_common, n)) |>
+  ggplot(aes(n, spc_common)) +
+  geom_col(fill = "#4C956C", width = 0.7) +
+  scale_x_continuous(labels = label_comma()) +
+  labs(title = "Most common living-tree species", x = "Trees", y = NULL)
+
+(p_dbh | p_species_count) +
+  plot_layout(widths = c(0.9, 1.1)) +
+  plot_annotation(tag_levels = "A")
+```
+
+Median diameter is 10 inches (mean 11.7; 99th percentile 37), but the maximum
+is 425 inches. There are 222 living trees recorded with zero diameter and 67
+above 100 inches. These observations require plausibility checks and
+sensitivity analysis; they should not be deleted solely because an automated
+outlier rule identifies them. Species is also concentrated: London planetree
+alone represents 87,014 living trees (13.3%).
+
+## Feature--outcome relationships
+
+```{r}
+#| label: fig-feature-outcome
+#| fig-width: 12
+#| fig-height: 5.5
+#| fig-cap: "Figure 3: Health composition by recorded problem burden and observed Poor-health share by species."
+
+health_by_problem <- trees |>
+  count(problem_group, health, .drop = FALSE, name = "n") |>
+  group_by(problem_group) |>
+  mutate(proportion = n / sum(n)) |>
+  ungroup()
+
+p_problem <- ggplot(
+  health_by_problem,
+  aes(problem_group, proportion, fill = health)
+) +
+  geom_col(width = 0.7) +
+  scale_fill_manual(values = health_cols) +
+  scale_y_continuous(labels = label_percent()) +
+  labs(title = "Health worsens as recorded problems accumulate",
+       x = "Number of root/trunk/branch problems", y = "Within-group share",
+       fill = "Health")
+
+species_poor <- trees |>
+  count(spc_common, health, name = "n") |>
+  group_by(spc_common) |>
+  mutate(species_total = sum(n), proportion = n / species_total) |>
+  ungroup() |>
+  filter(health == "Poor", species_total >= 1000) |>
+  slice_max(proportion, n = 12, with_ties = FALSE)
+
+p_species_poor <- species_poor |>
+  mutate(spc_common = fct_reorder(spc_common, proportion)) |>
+  ggplot(aes(proportion, spc_common)) +
+  geom_col(fill = health_cols[["Poor"]], width = 0.7) +
+  scale_x_continuous(labels = label_percent()) +
+  labs(title = "Poor-health share differs by species",
+       subtitle = "Species with at least 1,000 living trees",
+       x = "Poor-health share", y = NULL)
+
+(p_problem | p_species_poor) +
+  plot_layout(widths = c(1, 1)) +
+  plot_annotation(tag_levels = "A")
+```
+
+Poor health rises from 3.6% among trees with no recorded problems to 11.7%
+among trees with three or more. Species differences are also substantial:
+11.1% of Norway maples are recorded as Poor, compared with 4.1% overall.
+These are useful predictive signals, but confounding by age, location,
+observer, and other variables prevents a causal interpretation.
+
+## Feature--feature relationship
+
+```{r}
+#| label: fig-feature-feature
+#| fig-width: 9
+#| fig-height: 4.8
+#| fig-cap: "Figure 4: Diameter distributions across the twelve most common species (feature--feature relationship)."
+
+trees |>
+  filter(spc_common %in% top_species$spc_common) |>
+  mutate(spc_common = fct_reorder(spc_common, tree_dbh, .fun = median)) |>
+  ggplot(aes(tree_dbh, spc_common)) +
+  geom_boxplot(outlier.shape = NA, fill = "#A7C7A1", colour = "#31572C") +
+  coord_cartesian(xlim = c(0, quantile(trees$tree_dbh, 0.99, na.rm = TRUE))) +
+  labs(title = "Diameter distributions differ across common species",
+       subtitle = "Display ends at the overall 99th percentile",
+       x = "Diameter at breast height (inches)", y = NULL)
+```
+
+The association between species and diameter suggests that predictors are not
+independent. Models that can represent non-linear relationships and
+interactions may therefore improve on a purely additive linear model.
+
+# Project Planning
+
+## Preprocessing and resampling plan
+
+1. Retain living trees with a known outcome and preserve Good/Fair/Poor as a
+   factor. Do not impute the outcome.
+2. Remove direct identifiers (`tree_id`, address, BIN, and BBL), the constant
+   `status`, inapplicable `stump_diam`, duplicate species name `spc_latin`, and
+   raw `problems` text, which duplicates the nine issue indicators.
+3. Retain `block_id` only as a resampling group. Split entire blocks between
+   development and test sets so nearby trees from one block cannot appear in
+   both. Keep the test set untouched until final evaluation.
+4. Within each training fold, impute numeric predictors with the training
+   median, encode unknown nominal values explicitly, pool rare species, and
+   create dummy variables where required. Compare raw and `log1p` diameter and
+   conduct a sensitivity analysis for implausible diameters.
+5. Compare specifications with and without `user_type` and detailed geography
+   to assess observer/process effects and dependence on location. Apply class
+   weights or other imbalance treatment only inside training folds.
+
+## Candidate model plan
+
+| Model | Suitability and role |
+|---|---|
+| Regularised multinomial logistic regression | Interpretable baseline; regularisation controls the expanded categorical design matrix. |
+| Naive Bayes | Fast, scalable benchmark for a large dataset with many categorical predictors. Omit this model if the group has four members. |
+| CART classification tree | Interpretable non-linear rules and interactions; pruning controls overfitting. |
+| Random forest | Captures non-linearity and interactions while reducing single-tree variance (Breiman, 2001). |
+| Gradient-boosted trees (XGBoost) | Flexible high-performance candidate; tune depth, learning rate, and number of trees (Chen & Guestrin, 2016). |
+
+All models will use the same grouped split and grouped cross-validation folds.
+Hyperparameters and class weights will be selected using training resamples,
+not the final test set.
+
+## Evaluation plan
+
+**Macro F1** will be the primary selection metric because it gives equal
+importance to all three classes. Secondary measures will include balanced
+accuracy, per-class precision and recall (especially Poor-class recall),
+multiclass log loss, and the confusion matrix. Overall accuracy will be
+reported only alongside the 81.1% majority-class benchmark. Probability
+calibration will also be inspected if the model is intended to prioritise
+inspections by risk score.
+
+## Timeline, responsibilities, and contingencies
+
+| Milestone | Target | Lead | Backup/contingency |
+|---|---|---|---|
+| Confirm cohort, predictors, and EDA | T--14 days | [Member A] | [Member B] independently checks counts and figures. |
+| Implement grouped split and preprocessing recipe | T--10 days | [Member B] | [Member A] reviews leakage and reproducibility. |
+| Fit and tune candidate models | T--7 days | [Members C/D/E] | Reduce tuning grid and parallelise if computation is excessive. |
+| Compare models and perform sensitivity checks | T--4 days | [Member C] | [Member D] reproduces metrics from saved predictions. |
+| Integrate report, references, and page-limit check | T--2 days | [Member D] | All members review; use the R Markdown version if Quarto is unavailable. |
+| Final reproducibility run and submission | T--1 day | [Submitter] | A second member retains the final HTML and source files. |
+
+Replace the placeholders with names and actual dates. If the group has four
+members, remove Naive Bayes and allocate one model to each member. All members
+remain jointly responsible for interpretation and final quality assurance.
+
+# References
+
+Breiman, L. (2001). Random forests. *Machine Learning, 45*(1), 5--32.
+https://doi.org/10.1023/A:1010933404324
+
+Chen, T., & Guestrin, C. (2016). XGBoost: A scalable tree boosting system. In
+*Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge
+Discovery and Data Mining* (pp. 785--794).
+https://doi.org/10.1145/2939672.2939785
+
+New York City Department of Parks and Recreation. (2016). *Street Tree Census
+2015 trees data dictionary* [Data dictionary]. NYC Open Data.
+https://data.cityofnewyork.us/api/views/uvpi-gqnh/files/8705bfd6-993c-40c5-8620-0c81191c7e25?download=true
+
+New York City Department of Parks and Recreation. (2024). *2015 Street Tree
+Census--Tree Data* [Data set]. NYC Open Data.
+https://data.cityofnewyork.us/Environment/2015-Street-Tree-Census-Tree-Data/uvpi-gqnh
+
+## AI Use Statement
+
+We acknowledge the use of OpenAI Codex (GPT-5, OpenAI,
+https://openai.com/codex) to assist with structuring the report and drafting
+and debugging R code. All code, outputs, interpretations, citations, and final
+written content were reviewed and verified by the authors.

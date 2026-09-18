@@ -1,0 +1,46 @@
+variable,missing_n,missing_pct
+problems,31664,0.04630675004533569
+spc_latin,31619,0.04624094017444003
+spc_common,31619,0.04624094017444003
+health,31616,0.046236552849713654
+guards,31616,0.046236552849713654
+sidewalk,31616,0.046236552849713654
+steward,31615,0.046235090408138196
+bin,9559,0.01397947901981316
+bbl,9559,0.01397947901981316
+council district,6519,0.009533656630417615
+census tract,6519,0.009533656630417615
+tree_id,0,0
+block_id,0,0
+created_at,0,0
+tree_dbh,0,0
+stump_diam,0,0
+curb_loc,0,0
+status,0,0
+user_type,0,0
+root_stone,0,0
+root_grate,0,0
+root_other,0,0
+trunk_wire,0,0
+trnk_light,0,0
+trnk_other,0,0
+brch_light,0,0
+brch_shoe,0,0
+brch_other,0,0
+address,0,0
+postcode,0,0
+zip_city,0,0
+community board,0,0
+borocode,0,0
+borough,0,0
+cncldist,0,0
+st_assem,0,0
+st_senate,0,0
+nta,0,0
+nta_name,0,0
+boro_ct,0,0
+state,0,0
+latitude,0,0
+longitude,0,0
+x_sp,0,0
+y_sp,0,0

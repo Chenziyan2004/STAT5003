@@ -1,0 +1,46 @@
+variable,imported_class,distinct_values
+tree_id,numeric,683788
+block_id,numeric,101390
+created_at,character,483
+tree_dbh,numeric,146
+stump_diam,numeric,100
+curb_loc,character,2
+status,character,3
+health,character,4
+spc_latin,character,133
+spc_common,character,133
+steward,character,5
+guards,character,5
+sidewalk,character,3
+user_type,character,3
+problems,character,233
+root_stone,character,2
+root_grate,character,2
+root_other,character,2
+trunk_wire,character,2
+trnk_light,character,2
+trnk_other,character,2
+brch_light,character,2
+brch_shoe,character,2
+brch_other,character,2
+address,character,408701
+postcode,numeric,191
+zip_city,character,48
+community board,numeric,59
+borocode,numeric,5
+borough,character,5
+cncldist,numeric,51
+st_assem,numeric,65
+st_senate,numeric,26
+nta,character,188
+nta_name,character,188
+boro_ct,numeric,2152
+state,character,1
+latitude,numeric,676080
+longitude,numeric,677101
+x_sp,numeric,681630
+y_sp,numeric,682632
+council district,numeric,52
+census tract,numeric,1316
+bin,numeric,378889
+bbl,numeric,366636

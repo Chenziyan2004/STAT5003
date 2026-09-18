@@ -1,0 +1,11 @@
+metric,value
+Minimum,0
+1st percentile,2
+Median,10
+Mean,11.709478481136886
+99th percentile,37
+99.9th percentile,47
+Maximum,425
+Zero-diameter living trees,222
+Living trees over 100 inches,67
+Upper 1.5-IQR fence,32.5
