@@ -1,6 +1,6 @@
 ---
 title: "Classifying the Perceived Health of New York City Street Trees"
-author: "STAT5003 Group [REPLACE WITH GROUP NUMBER]"
+author: "STAT5003 W12G04"
 format:
   html:
     code-fold: true
@@ -374,16 +374,14 @@ inspections by risk score.
 
 | Milestone | Target | Lead | Backup/contingency |
 |---|---|---|---|
-| Confirm cohort, predictors, and EDA | T--14 days | [Member A] | [Member B] independently checks counts and figures. |
-| Implement grouped split and preprocessing recipe | T--10 days | [Member B] | [Member A] reviews leakage and reproducibility. |
-| Fit and tune candidate models | T--7 days | [Members C/D/E] | Reduce tuning grid and parallelise if computation is excessive. |
-| Compare models and perform sensitivity checks | T--4 days | [Member C] | [Member D] reproduces metrics from saved predictions. |
-| Integrate report, references, and page-limit check | T--2 days | [Member D] | All members review; use the R Markdown version if Quarto is unavailable. |
-| Final reproducibility run and submission | T--1 day | [Submitter] | A second member retains the final HTML and source files. |
+| Confirm cohort, predictors, and EDA | Week 7-8 | Ziyan Chen | Anas Howera independently checks counts and figures. |
+| Implement grouped split and preprocessing recipe | Week 9 | Chandrahaas Vellanki | Ziyan Chen reviews leakage and reproducibility. |
+| Fit and tune candidate models | Week 10-11 | Harshita Singh, Uma Sree Asritha Adari, Anas Howera | Reduce tuning grid and parallelise if computation is excessive. |
+| Compare models and perform sensitivity checks | Week 10-11 | Ziyan Chen, Uma Sree Asritha Adari | Chandrahaas Vellanki reproduces metrics from saved predictions. |
+| Integrate report, references, and page-limit check | Week 10-11 | Harshita Singh | All members review; use the R Markdown version if Quarto is unavailable. |
+| Final reproducibility run and submission | Week 12 | Ziyan Chen | A second member retains the final HTML and source files. |
 
-Replace the placeholders with names and actual dates. If the group has four
-members, remove Naive Bayes and allocate one model to each member. All members
-remain jointly responsible for interpretation and final quality assurance.
+
 
 # References
 
