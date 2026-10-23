@@ -17,6 +17,7 @@ format:
           h2 { font-size: 14pt; margin-top: 0.6rem; margin-bottom: 0.3rem; }
           p { margin-bottom: 0.4rem; }
           table { font-size: 9pt; }
+          details.code-fold { display: none !important; }
           figure {
             break-inside: avoid;
             margin-top: 0.35rem;
@@ -63,7 +64,7 @@ library(scales)
 library(patchwork)
 library(knitr)
 
-data_file <- "2015_Street_Tree_Census_-_Tree_Data_20260912.csv"
+data_file <- "2015_Street_Tree_Census_-_Tree_Data.csv"
 
 trees_raw <- read_csv(
   data_file,

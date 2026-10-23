@@ -41,7 +41,7 @@ suppressPackageStartupMessages({
 
 options(dplyr.summarise.inform = FALSE)
 
-data_file <- "2015_Street_Tree_Census_-_Tree_Data_20260912.csv"
+data_file <- "2015_Street_Tree_Census_-_Tree_Data.csv"
 output_dir <- "eda_outputs"
 figure_dir <- file.path(output_dir, "figures")
 table_dir <- file.path(output_dir, "tables")
