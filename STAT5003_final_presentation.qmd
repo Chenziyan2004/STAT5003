@@ -1,0 +1,685 @@
+---
+title: "Classifying the Health of New York City Street Trees"
+subtitle: "STAT5003 Data Investigation Project · W12G04"
+author:
+  - Ziyan Chen
+  - Chandrahaas Vellanki
+  - Harshita Singh
+  - Uma Sree Asritha Adari
+  - Anas Howera
+format:
+  revealjs:
+    theme: [simple, presentation.scss]
+    slide-number: c/t
+    incremental: false
+    transition: none
+    background-transition: none
+    width: 1600
+    height: 900
+    margin: 0.06
+    center: false
+    embed-resources: true
+    chalkboard: false
+    preview-links: auto
+execute:
+  echo: false
+  warning: false
+  message: false
+  cache: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+health_cols <- c(Good = "#2E7D32", Fair = "#F9A825", Poor = "#C62828")
+accent_green <- "#2E7D32"
+accent_blue <- "#315E7D"
+muted_grey <- "#9AA5B1"
+
+class_distribution <- read_csv(
+  "eda_outputs/tables/class_distribution.csv",
+  show_col_types = FALSE
+)
+problem_health <- read_csv(
+  "eda_outputs/tables/health_by_problem_count.csv",
+  show_col_types = FALSE
+)
+species_poor <- read_csv(
+  "eda_outputs/tables/poor_share_by_species.csv",
+  show_col_types = FALSE
+)
+comparison <- read_csv(
+  "results/model_comparison.csv",
+  show_col_types = FALSE
+)
+baseline_metrics <- read_csv(
+  "results/majority_baseline_metrics.csv",
+  show_col_types = FALSE
+)
+test_metrics <- read_csv(
+  "results/final_test_metrics.csv",
+  show_col_types = FALSE
+)
+final_confusion <- read_csv(
+  "results/final_confusion_matrix.csv",
+  show_col_types = FALSE
+)
+importance <- read_csv(
+  "results/final_xgboost_importance.csv",
+  show_col_types = FALSE
+)
+
+metric_value <- function(metric, class_name = NA_character_) {
+  result <- test_metrics |>
+    filter(.metric == metric)
+  if (is.na(class_name)) {
+    result <- result |> filter(is.na(class))
+  } else {
+    result <- result |> filter(class == class_name)
+  }
+  result$estimate[[1]]
+}
+
+macro_f1 <- metric_value("macro_f_meas")
+balanced_accuracy <- metric_value("bal_accuracy")
+poor_recall <- metric_value("recall", "Poor")
+poor_precision <- metric_value("precision", "Poor")
+
+xgb_natural_checkpoint <- readRDS(
+  "results/checkpoints/xgboost_natural_checkpoint.rds"
+)
+xgb_downsampled_checkpoint <- readRDS(
+  "results/checkpoints/xgboost_downsampled_checkpoint.rds"
+)
+
+cv_metric_value <- function(checkpoint, metric, class_name = NA_character_) {
+  result <- checkpoint$selected_metrics |>
+    filter(.metric == metric)
+  if (is.na(class_name)) {
+    result <- result |> filter(is.na(class))
+  } else {
+    result <- result |> filter(class == class_name)
+  }
+  result$mean[[1]]
+}
+
+xgb_natural_macro <- cv_metric_value(
+  xgb_natural_checkpoint, "macro_f_meas"
+)
+xgb_rebalanced_macro <- cv_metric_value(
+  xgb_downsampled_checkpoint, "macro_f_meas"
+)
+xgb_natural_poor_recall <- cv_metric_value(
+  xgb_natural_checkpoint, "recall", "Poor"
+)
+xgb_rebalanced_poor_recall <- cv_metric_value(
+  xgb_downsampled_checkpoint, "recall", "Poor"
+)
+xgb_natural_accuracy <- cv_metric_value(
+  xgb_natural_checkpoint, "accuracy"
+)
+xgb_rebalanced_accuracy <- cv_metric_value(
+  xgb_downsampled_checkpoint, "accuracy"
+)
+xgb_selected_parameters <- xgb_downsampled_checkpoint$best_params
+
+theme_slide <- function(base_size = 25) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      plot.title = element_blank(),
+      plot.subtitle = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_blank(),
+      axis.title = element_text(colour = "#334E3B"),
+      axis.text = element_text(colour = "#344054"),
+      legend.position = "none",
+      plot.margin = margin(8, 20, 8, 12)
+    )
+}
+```
+
+## Motivation : why investigate street-tree health? {.transition-slide}
+
+::: {.notes}
+We begin with why this classification problem matters and the decision that
+the model is intended to support.
+:::
+
+## Street trees are valuable—but inspection capacity is limited
+
+::: {.impact-grid}
+::: {.impact-card}
+<span class="card-icon">🌳</span>
+
+Hundreds of thousands of trees line NYC streets
+:::
+
+::: {.impact-card}
+<span class="card-icon">🔎</span>
+
+Some require inspection or maintenance
+:::
+
+::: {.impact-card}
+<span class="card-icon">⏱</span>
+
+Professional inspection of every tree takes time
+:::
+:::
+
+::: {.question-box}
+Can routinely collected data help identify trees needing attention?
+:::
+
+::: {.notes}
+New York City manages a very large street-tree population. Some trees need
+attention, but inspecting every tree immediately is resource-intensive. Our
+question is whether information already collected in the census can support
+prioritisation.
+:::
+
+## Can observable characteristics classify perceived tree health?
+
+::: {.research-question}
+Can tree characteristics, site conditions and geographic information classify
+living street trees as **Good**, **Fair**, or **Poor** health?
+:::
+
+::: {.class-row}
+<span class="class-pill good">Good</span>
+<span class="class-pill fair">Fair</span>
+<span class="class-pill poor">Poor</span>
+:::
+
+::: {.goal-box}
+**Goal:** a screening tool to support prioritisation—not replace professional inspection.
+:::
+
+::: {.notes}
+The outcome is the census worker's perceived health rating. We frame this as a
+three-class prediction problem. The model is intended as a screening aid, not
+an arboricultural diagnosis and not evidence of causal effects.
+:::
+
+## The census provides scale and varied predictive signals
+
+::: {.number-grid}
+::: {.number-card}
+<span class="big-number">683,788</span>
+
+original records
+:::
+
+::: {.number-card}
+<span class="big-number">652,172</span>
+
+living trees modelled
+:::
+
+::: {.number-card}
+<span class="big-number">18</span>
+
+main predictors
+:::
+:::
+
+::: {.predictor-row}
+<span>🌿 **Tree**<br>species, diameter</span>
+<span>🏙 **Site**<br>sidewalk, guards, stewardship</span>
+<span>🩺 **Condition**<br>root, trunk, branch problems</span>
+<span>📍 **Location**<br>borough, coordinates</span>
+:::
+
+<div class="source">Source: NYC Parks 2015 Street Tree Census. Health is available for living trees.</div>
+
+::: {.notes}
+The original census contains about 684 thousand records. After restricting to
+living trees with a recorded health outcome, 652,172 remained. We retained 18
+predictors covering the tree, its site and condition, and location.
+:::
+
+## Univariate analysis : which variables distinguish tree health? {.transition-slide}
+
+::: {.notes}
+We first ask which individual recorded characteristics show visibly different
+health patterns. We focus on the strongest examples rather than every EDA plot.
+:::
+
+## More recorded problems coincide with poorer health
+
+```{r}
+#| label: plot-problem-health-presentation
+#| fig-width: 11
+#| fig-height: 4.25
+#| out-width: 79%
+#| fig-align: center
+
+problem_health |>
+  filter(health == "Poor") |>
+  mutate(problem_group = factor(problem_group, levels = c("0", "1", "2", "3+"))) |>
+  ggplot(aes(problem_group, proportion, group = 1)) +
+  geom_col(fill = health_cols[["Poor"]], width = 0.62, alpha = 0.9) +
+  geom_text(
+    aes(label = percent(proportion, accuracy = 0.1)),
+    vjust = -0.28,
+    size = 7.5,
+    fontface = "bold"
+  ) +
+  scale_y_continuous(
+    labels = label_percent(),
+    limits = c(0, 0.135),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  labs(
+    x = "Number of recorded root, trunk and branch problems",
+    y = "Poor-health share"
+  ) +
+  theme_slide(26)
+```
+
+::: {.takeaway}
+Poor health rises from **3.6%** with no recorded problem to **11.7%** with 3+ problems.
+:::
+
+::: {.notes}
+The recorded problem indicators provide a strong signal. The Poor-health share
+is about three times higher among trees with at least three recorded problems.
+This is an association and may also reflect age, location, or observer effects.
+:::
+
+## Health patterns also differ substantially by species
+
+```{r}
+#| label: plot-species-presentation
+#| fig-width: 11.2
+#| fig-height: 4.75
+#| out-width: 84%
+#| fig-align: center
+
+species_poor |>
+  slice_max(proportion, n = 7, with_ties = FALSE) |>
+  mutate(spc_common = reorder(spc_common, proportion)) |>
+  ggplot(aes(proportion, spc_common)) +
+  geom_col(fill = health_cols[["Poor"]], width = 0.7, alpha = 0.9) +
+  geom_text(
+    aes(label = percent(proportion, accuracy = 0.1)),
+    hjust = -0.15,
+    size = 6.5,
+    fontface = "bold"
+  ) +
+  scale_x_continuous(
+    labels = label_percent(),
+    limits = c(0, 0.125),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  labs(x = "Observed Poor-health share", y = NULL) +
+  theme_slide(24)
+```
+
+::: {.takeaway}
+Multiple interacting characteristics—not one variable alone—appear relevant.
+:::
+
+::: {.notes}
+Species also matters. Among common species, the Poor share reaches 11.1 percent
+for Norway maples, compared with 4.1 percent overall. Together with diameter,
+condition, and location patterns, this motivates models that can represent
+non-linear interactions.
+:::
+
+## Machine learning : sample splits and model construction {.transition-slide}
+
+::: {.notes}
+The exploratory patterns suggest useful predictive information. We now move
+from description to a leakage-safe machine-learning comparison.
+:::
+
+## Nearby trees were kept together—and the test set stayed untouched
+
+::::: {.columns .prep-layout}
+:::: {.column width="42%" .pipeline-vertical}
+<div class="pipe-card"><strong>652,172</strong><br>eligible trees</div>
+<div class="pipe-card development"><strong>521,746</strong><br>80% development</div>
+<div class="pipe-card test"><strong>130,426</strong><br>20% final test</div>
+::::
+
+:::: {.column width="55%" .prep-steps}
+::: {.prep-step}
+**1. Keep nearby trees together**
+
+Same street block stays in one partition
+:::
+
+::: {.prep-step}
+**2. Handle categories consistently**
+
+Rare and unseen levels remain valid
+:::
+
+::: {.prep-step}
+**3. Reduce diameter skew**
+
+Apply the transformation inside training
+:::
+::::
+:::::
+
+::: {.notes}
+To reduce overly optimistic validation, trees from the same street block were
+kept together. We reserved 20 percent as a final test set and did not inspect
+it during model choice. Imputation, category handling, and transformation were
+estimated inside the training process.
+:::
+
+## We compared simple-to-flexible models on the same evidence
+
+::: {.model-row}
+<span>Logistic<br><small>linear benchmark</small></span>
+<span>Naive Bayes<br><small>probabilistic benchmark</small></span>
+<span>Decision Tree<br><small>interpretable rules</small></span>
+<span>Random Forest<br><small>many trees</small></span>
+<span class="winner-model">XGBoost<br><small>sequential trees</small></span>
+:::
+
+::: {.refinement-flow}
+<span>Prepare features</span><b>→</b><span>Compare natural vs rebalanced training</span><b>→</b><span>Refine settings with grouped CV</span>
+:::
+
+::: {.notes}
+We compared five models from simple benchmarks to flexible tree ensembles. For
+fair comparison they used the same predictors and resampling structure. We
+also compared natural class frequencies with rebalanced training and tuned
+each model using the development data only.
+:::
+
+## Better optimization : rebalancing the training procedure {.transition-slide}
+
+::: {.notes}
+The strong class imbalance means that fitting the models is not enough. We now
+show how the evaluation target and rebalanced training changed model behaviour.
+:::
+
+## Accuracy alone was not enough
+
+```{r}
+#| label: plot-class-distribution-presentation
+#| fig-width: 10.5
+#| fig-height: 3.8
+#| out-width: 72%
+#| fig-align: center
+
+class_distribution |>
+  mutate(health = factor(health, levels = c("Good", "Fair", "Poor"))) |>
+  ggplot(aes(health, proportion, fill = health)) +
+  geom_col(width = 0.66) +
+  geom_text(
+    aes(label = percent(proportion, accuracy = 0.1)),
+    vjust = -0.25,
+    size = 8,
+    fontface = "bold"
+  ) +
+  scale_fill_manual(values = health_cols) +
+  scale_y_continuous(
+    labels = label_percent(),
+    limits = c(0, 0.9),
+    expand = expansion(mult = c(0, 0.03))
+  ) +
+  labs(x = NULL, y = "Share of living trees") +
+  theme_slide(27)
+```
+
+<div class="takeaway accuracy-warning">An always-<strong>Good</strong> prediction is 81.1% accurate—so accuracy alone is misleading.</div>
+
+::: {.macro-bridge}
+We therefore selected models with **Macro-F1**, giving Good, Fair and Poor equal importance.
+:::
+
+::: {.notes}
+Good accounts for 81.1 percent of living trees, while only 4.1 percent are
+Poor. Accuracy would reward the majority class too heavily, so we selected
+models by grouped-CV Macro-F1, which gives every class equal importance.
+:::
+
+## Rebalancing made Poor-tree screening far more sensitive
+
+<div class="improvement-grid">
+<div class="improvement-card">
+<span class="improvement-label">Poor recall</span>
+<span class="before-value">`r percent(xgb_natural_poor_recall, accuracy = 0.1)`</span>
+<span class="change-arrow">→</span>
+<span class="after-value">`r percent(xgb_rebalanced_poor_recall, accuracy = 0.1)`</span>
+<small>+`r number(100 * (xgb_rebalanced_poor_recall - xgb_natural_poor_recall), accuracy = 0.1)` percentage points</small>
+</div>
+<div class="improvement-card">
+<span class="improvement-label">Macro-F1</span>
+<span class="before-value">`r number(xgb_natural_macro, accuracy = 0.001)`</span>
+<span class="change-arrow">→</span>
+<span class="after-value">`r number(xgb_rebalanced_macro, accuracy = 0.001)`</span>
+<small>improved across the three classes</small>
+</div>
+<div class="improvement-card tradeoff-card">
+<span class="improvement-label">Accuracy</span>
+<span class="before-value">`r percent(xgb_natural_accuracy, accuracy = 0.1)`</span>
+<span class="change-arrow">→</span>
+<span class="after-value">`r percent(xgb_rebalanced_accuracy, accuracy = 0.1)`</span>
+<small>expected trade-off for minority detection</small>
+</div>
+</div>
+
+::: {.tuning-strip}
+**Grouped 5-fold CV selected:** `r xgb_selected_parameters$trees` trees · depth `r xgb_selected_parameters$tree_depth` · minimum node size `r xgb_selected_parameters$min_n` · learning rate `r number(xgb_selected_parameters$learn_rate, accuracy = 0.001)`
+:::
+
+::: {.improvement-takeaway}
+Rebalancing—not accuracy maximisation—made the model useful as a screening tool.
+:::
+
+::: {.notes}
+This comparison isolates an important modelling improvement. With natural
+class frequencies, tuned XGBoost retained high accuracy but detected only 5.2
+percent of Poor trees. Rebalanced training increased Poor recall to 52.9
+percent and slightly increased Macro-F1, although overall accuracy fell. We
+accepted that trade-off because the project is about screening uncommon Poor
+trees. The displayed hyperparameters were chosen with grouped five-fold
+cross-validation before opening the final test set.
+:::
+
+## Evaluation : how does our model perform? {.transition-slide}
+
+::: {.notes}
+We now compare the candidate models, then evaluate the selected model on the
+untouched test set and examine what drove its predictions.
+:::
+
+## XGBoost narrowly led the cross-validation comparison
+
+```{r}
+#| label: plot-model-comparison-presentation
+#| fig-width: 11.8
+#| fig-height: 4.75
+#| out-width: 86%
+#| fig-align: center
+
+baseline_macro <- baseline_metrics |>
+  filter(.metric == "macro_f_meas") |>
+  transmute(
+    model = "Always-Good baseline",
+    macro_f1 = mean,
+    macro_f1_std_err = std_err
+  )
+
+comparison_plot <- comparison |>
+  select(model, macro_f1, macro_f1_std_err) |>
+  bind_rows(baseline_macro) |>
+  mutate(
+    model = factor(model, levels = rev(c(comparison$model, "Always-Good baseline"))),
+    highlight = case_when(
+      model == "XGBoost" ~ "Winner",
+      model == "Always-Good baseline" ~ "Baseline",
+      TRUE ~ "Other"
+    )
+  )
+
+ggplot(comparison_plot, aes(macro_f1, model, fill = highlight)) +
+  geom_col(width = 0.67) +
+  geom_segment(
+    aes(
+      x = macro_f1 - macro_f1_std_err,
+      xend = macro_f1 + macro_f1_std_err,
+      yend = model
+    ),
+    colour = "#172B1C",
+    linewidth = 0.9
+  ) +
+  geom_text(
+    aes(label = number(macro_f1, accuracy = 0.001)),
+    hjust = -0.12,
+    size = 5.8,
+    fontface = "bold"
+  ) +
+  scale_fill_manual(values = c(Winner = accent_green, Other = accent_blue,
+                               Baseline = muted_grey)) +
+  scale_x_continuous(
+    limits = c(0, 0.42),
+    breaks = seq(0, 0.4, 0.1),
+    expand = expansion(mult = c(0, 0.01))
+  ) +
+  labs(x = "Mean grouped-CV Macro-F1", y = NULL) +
+  theme_slide(23)
+```
+
+::: {.takeaway}
+XGBoost (0.378) and Random Forest (0.377) were effectively very close.
+:::
+
+::: {.notes}
+XGBoost achieved the highest mean cross-validated Macro-F1, using rebalanced
+training data. Its advantage over Random Forest was only about 0.0014, so we
+should describe it as a narrow lead rather than a decisive victory. The model
+was selected before the final test set was opened.
+:::
+
+## The selected model detected 55% of Poor trees in unseen blocks
+
+::::: {.columns}
+:::: {.column width="35%" .metric-stack}
+::: {.metric-card}
+<span class="metric-number">`r number(macro_f1, accuracy = 0.001)`</span>
+
+Macro-F1
+:::
+
+::: {.metric-card}
+<span class="metric-number">`r percent(poor_recall, accuracy = 0.1)`</span>
+
+Poor recall
+:::
+
+::: {.metric-card}
+<span class="metric-number">`r number(balanced_accuracy, accuracy = 0.001)`</span>
+
+Balanced accuracy
+:::
+::::
+
+:::: {.column width="64%"}
+```{r}
+#| label: plot-final-confusion-presentation
+#| fig-width: 7.2
+#| fig-height: 4.7
+#| out-width: 92%
+#| fig-align: center
+
+final_confusion |>
+  mutate(
+    truth = factor(truth, levels = c("Poor", "Fair", "Good")),
+    estimate = factor(estimate, levels = c("Good", "Fair", "Poor")),
+    tile_label = paste0(comma(n), "\n", percent(row_proportion, accuracy = 0.1))
+  ) |>
+  ggplot(aes(estimate, truth, fill = row_proportion)) +
+  geom_tile(colour = "white", linewidth = 1.5) +
+  geom_text(aes(label = tile_label), size = 6.7, lineheight = 1.05) +
+  scale_fill_gradient(low = "#F2F7F2", high = "#2B6A3C") +
+  labs(x = "Predicted health", y = "Observed health") +
+  theme_minimal(base_size = 21) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    axis.text = element_text(colour = "#344054"),
+    plot.margin = margin(2, 8, 2, 2)
+  )
+```
+::::
+:::::
+
+<div class="caution">Screening sensitivity came with false alarms: Poor-class precision was `r percent(poor_precision, accuracy = 0.1)`.</div>
+
+::: {.notes}
+On the untouched test set, performance closely matched cross-validation. The
+model found 54.9 percent of genuinely Poor trees, but only about one in ten
+Poor predictions was correct. That trade-off may be acceptable for an initial
+screen, but it means predicted Poor trees still require professional review.
+:::
+
+## Location and tree size carried most predictive signal
+
+```{r}
+#| label: plot-importance-presentation
+#| fig-width: 10.5
+#| fig-height: 4.5
+#| out-width: 76%
+#| fig-align: center
+
+friendly_names <- c(
+  longitude = "Longitude",
+  latitude = "Latitude",
+  tree_dbh = "Tree diameter",
+  brch_other_Yes = "Other branch problem",
+  spc_common_Norway.maple = "Norway maple",
+  trnk_other_Yes = "Other trunk problem",
+  spc_common_honeylocust = "Honeylocust",
+  sidewalk_NoDamage = "No sidewalk damage"
+)
+
+importance |>
+  slice_max(Gain, n = 8, with_ties = FALSE) |>
+  mutate(
+    feature = recode(Feature, !!!friendly_names),
+    feature = reorder(feature, Gain)
+  ) |>
+  ggplot(aes(Gain, feature)) +
+  geom_col(fill = accent_blue, width = 0.68) +
+  scale_x_continuous(labels = label_percent()) +
+  labs(x = "Share of XGBoost importance", y = NULL) +
+  theme_slide(21)
+```
+
+::: {.location-caveat}
+Location importance may limit transfer to another city or year.
+:::
+
+<div class="source">Importance is predictive—not directional or causal.</div>
+
+::: {.notes}
+Location, diameter, condition indicators, and species contributed most to the
+selected model. Importance does not tell us whether a feature improves or
+worsens health, and it is not causal. Strong location importance also warns
+that the 2015 NYC model may not transfer directly to another place or period.
+The practical conclusion is targeted screening followed by human inspection.
+:::
+
+## Thank you {.center-slide}
+
+<div class="questions">Questions?</div>
+
+<div class="closing-line">Observable characteristics help prioritise attention—but tree health still requires professional judgement.</div>
+
+::: {.notes}
+Thank you. We welcome your questions.
+:::
